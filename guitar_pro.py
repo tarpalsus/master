@@ -30,6 +30,7 @@ value_duration_mapper = {64: 1,
                          1: 32}
 
 
+
 class mock(object):
     """Wrap value into object, to bypass guitapro lib limitations"""
     def __init__(self, value):
@@ -139,18 +140,14 @@ def to_guitar_pro(df, path='tarpalsus.g5', tempo=130):
     return splits, base_song, chunks
 
 
-def rnn_to_guitar_pro(high_path, mid_path, low_path,
-                      output_name, duration=False):
+def rnn_to_guitar_pro(path, output_name, duration=False, use_path=True):
     """ Get output produced by neural net, process it to g5.files"""
-    with open(high_path, 'rb') as f:
-        high = pickle.load(f)
-    with open(low_path, 'rb') as f:
-        low = pickle.load(f)
-    with open(mid_path, 'rb') as f:
-        mid = pickle.load(f)
-    process_sequence(output_name, mid, 'mid',duration)
-    process_sequence(output_name, high, 'high', duration)
-    process_sequence(output_name, low, 'low', duration)
+    if use_path:
+        with open(path, 'rb') as f:
+            seq = pickle.load(f)
+    else:
+        seq = path
+    process_sequence(output_name, seq, 'test_mid', duration)
     return
 
 
@@ -158,15 +155,15 @@ def process_sequence(output_name, sequence, sequence_name, duration=False):
     for i, seq in enumerate(sequence):
         df = pd.DataFrame()
         if duration:
-            print(i)
-            duration = [re.split('(\d+)', i)[-2] for i in seq]
-            value_string = [''.join(re.split('(\d+)', i)[1:-2]) for i in seq]
+            duration = [x[1] for x in seq]
+            value_string = [''.join(re.split('(\d+)', x[0])) for x in seq]
             df['Duration'] = duration
             df['Duration'] = df['Duration'].apply(int)
             df['Value+String'] = value_string
         else:
             df['Value+String'] = seq
             df['Duration'] = 8
+        print(df)
         _, _, _ = to_guitar_pro(df, ('generated\\' + output_name + '_' + sequence_name + str(i) + '.gp5'))
     return
 
@@ -331,15 +328,15 @@ if __name__ == '__main__':
             sounds = pd.concat([sounds, sounds_out])
         sounds.to_csv(outfile)
 
-rnn_to_guitar_pro('high_no_dur_10ep.pkl',
-                  'mid_no_dur_10ep.pkl', 'low_no_dur_10ep.pkl', '10ep_no_dur')
-rnn_to_guitar_pro('high_10ep.pkl',
-                  'mid_10ep.pkl', 'low_10ep.pkl', '10ep', duration = True)
-rnn_to_guitar_pro('high_10ep_drop.pkl',
-                  'mid_10ep_drop.pkl', 'low_10ep_drop.pkl', '10ep_drop', duration = True)
-rnn_to_guitar_pro('high_10ep_drop_len70.pkl',
-                  'mid_10ep_drop_len70.pkl', 'low_10ep_drop_len70.pkl', '10ep_drop_len70', duration = True)
-rnn_to_guitar_pro('high_10ep_drop_len5.pkl',
-                  'mid_10ep_drop_len5.pkl', 'low_10ep_drop_len5.pkl', '10ep_drop_len5', duration = True)
-rnn_to_guitar_pro('high_10ep_drop_len20.pkl',
-                  'mid_10ep_drop_len20.pkl', 'low_10ep_drop_len20.pkl', '10ep_drop_len20', duration = True)
+    rnn_to_guitar_pro('high_no_dur_10ep.pkl',
+                      'mid_no_dur_10ep.pkl', 'low_no_dur_10ep.pkl', '10ep_no_dur')
+    rnn_to_guitar_pro('high_10ep.pkl',
+                      'mid_10ep.pkl', 'low_10ep.pkl', '10ep', duration = True)
+    rnn_to_guitar_pro('high_10ep_drop.pkl',
+                      'mid_10ep_drop.pkl', 'low_10ep_drop.pkl', '10ep_drop', duration = True)
+    rnn_to_guitar_pro('high_10ep_drop_len70.pkl',
+                      'mid_10ep_drop_len70.pkl', 'low_10ep_drop_len70.pkl', '10ep_drop_len70', duration = True)
+    rnn_to_guitar_pro('high_10ep_drop_len5.pkl',
+                      'mid_10ep_drop_len5.pkl', 'low_10ep_drop_len5.pkl', '10ep_drop_len5', duration = True)
+    rnn_to_guitar_pro('high_10ep_drop_len20.pkl',
+                      'mid_10ep_drop_len20.pkl', 'low_10ep_drop_len20.pkl', '10ep_drop_len20', duration = True)
