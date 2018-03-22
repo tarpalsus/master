@@ -34,7 +34,7 @@ def simple(maxlen, input_dim=PITCHES):
 #    model.add(LSTM(512, input_shape=(maxlen, input_dim),
 #                  return_sequences=True, dropout_U=0.5))
 #    model.add(Dropout(0.5))
-    model.add(LSTM(512, input_shape=(maxlen, input_dim), dropout_U=0.5))
+    model.add(LSTM(128, input_shape=(maxlen, input_dim), dropout_U=0.2))
     model.add(Dense(input_dim))
     model.add(Activation('softmax'))
     optimizer = Adam(lr=0.001)
@@ -52,7 +52,7 @@ def prepare_model_keras(maxlen, input_dim=PITCHES):
     model.add(Dense(input_dim))
     model.add(Activation('softmax'))
     optimizer = Adam(lr=0.001)
-    model.compile(loss='categorical_crossentropy', optimizer=optimizer)
+    model.compile(loss='categorical_crossentropy', optimizer=optimizer,metrics=['accuracy'])
     return model
 
 def prepare_conv_lstm(maxlen, num_channels):

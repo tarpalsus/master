@@ -13,10 +13,22 @@ OUT_MAX_LEN = 1
 NUM_CHANNELS = 4
 fs=50
 PITCHES = 128
-PITCHES_SILENCE = PITCHES + 1
+PITCHES_REPRESS = PITCHES + 1
+PITCHES_SILENCE = PITCHES_REPRESS  + 1
 from note_events import create_events_from_midi, encode_events, MAX_LEN
 from Midi_Parser import MidiParser
 import random
+
+
+def find_represses(roll):
+    roll2 = np.roll(roll, 1)
+    roll2[:,0]=np.zeros(roll2[:,0].shape)
+    diff = roll - roll2
+    small_diff=diff * (abs(diff)<30).astype(float)
+    ticks = np.argwhere(diff>0)[:,1]
+    roll = np.vstack((roll, np.zeros((1,roll.shape[1]))))
+    roll[PITCHES, ticks] = 1
+    return roll
 
 def create_sequences(monophonic_roll, maxlen=MAX_LEN, 
                      output_maxlen=OUT_MAX_LEN, pitches=PITCHES_SILENCE):
@@ -36,7 +48,7 @@ def create_sequences(monophonic_roll, maxlen=MAX_LEN,
     y = np.moveaxis(y, -1, 0)
     return X, y
 
-def create_sequences_fast(monophonic_roll, maxlen=MAX_LEN, output_maxlen=OUT_MAX_LEN, pitches=PITCHES_SILENCE):
+def create_sequences_fast(monophonic_roll, maxlen=MAX_LEN, output_maxlen=OUT_MAX_LEN, pitches=PITCHES_REPRESS):
     step=1
     num_seq = int((monophonic_roll.shape[1]-maxlen- output_maxlen)/step)
     X = np.zeros([num_seq, maxlen,pitches])
@@ -63,27 +75,42 @@ def parse_directory(path_to_directory, file_list):
     return midis, file_list[0], file
 
 def create_dataset(midis, fs=4, poly=False):
-    roll = midis[0].midi_file.get_piano_roll(fs)
-    roll_ones = (roll>0).astype(float)
-    rolls =roll_ones
-    if poly:   
-        seq = polyphonize(roll_ones)
-    else:
-        seq= monophonize(roll_ones)
-    X, y = create_sequences_fast(seq)
-    for midi_obj in midis[1:]:
-        roll = midi_obj.midi_file.get_piano_roll(fs)
-        roll_ones = (roll>0).astype(float)
+    if isinstance(midis,list):
+        roll = midis[0].midi_file.get_piano_roll(fs)
+        roll_repress = find_represses(roll)
+        roll_ones = (roll_repress>0).astype(float)
         if poly:   
             seq = polyphonize(roll_ones)
         else:
             seq= monophonize(roll_ones)
-        X_piece, y_piece = create_sequences_fast(seq)
-        print(X.shape)
-        X = np.concatenate((X,X_piece),axis=0)
-        #rolls = np.concatenate((rolls, roll_ones),axis=1)
-        
-        y = np.concatenate((y,y_piece),axis=0)
+            seq = np.delete(seq, (129), axis=0)
+        X, y = create_sequences_fast(seq)
+        for midi_obj in midis[1:]:
+            roll = midi_obj.midi_file.get_piano_roll(fs)
+            roll_repress = find_represses(roll)
+            roll_ones = (roll_repress>0).astype(float)
+            if poly:   
+                seq = polyphonize(roll_ones)
+            else:
+                seq= monophonize(roll_ones)
+                seq = np.delete(seq, (129), axis=0)
+            X_piece, y_piece = create_sequences_fast(seq)
+            print(X.shape)
+            X = np.concatenate((X,X_piece),axis=0)
+            #rolls = np.concatenate((rolls, roll_ones),axis=1)
+            
+            y = np.concatenate((y,y_piece),axis=0)
+    else:
+        roll = midis.midi_file.get_piano_roll(fs)
+        roll_repress = find_represses(roll)
+        roll_ones = (roll_repress>0).astype(float)
+        if poly:   
+            seq = polyphonize(roll_ones)
+        else:
+            seq = monophonize(roll_ones)
+            
+            seq = np.delete(seq, (129), axis=0)
+        X, y = create_sequences_fast(seq)
     return X, y
 
 def parse_directory_for_events(path_to_directory, fs, file_list, max_pitch=128, beat_parts=BEAT_PARTS,
@@ -125,24 +152,28 @@ def preprocess_to_hdf5(path_to_dir, num_in_batch, fs=50, midi_num=None, data_typ
     if midi_num:
         midi_files_num = len(file_list[:midi_num])
     else:
-        midi_files_num = len(file_list(path_to_dir))
+        midi_files_num = len(file_list)
     num_files_in_batch = num_in_batch
     
     random.shuffle(file_list, random.random)
+    sum_shapes = 0
     
-    for i in range(0, midi_files_num, num_files_in_batch):
+    for i in range(0, int(midi_files_num/num_files_in_batch)):
         first = os.listdir(path_to_dir)[i]
         last = os.listdir(path_to_dir)[i+num_files_in_batch-1]
         if data_type=='roll':
             midis, first, last = parse_directory(path_to_dir,
-                                                 file_list[i*num_files_in_batch:i*num_files_in_batch + num_files_in_batch])
+                                                 file_list[i*num_files_in_batch:(i+1)*num_files_in_batch])
             X, y = create_dataset(midis, fs=fs, poly=poly)
         else:
             events, encoded, X, y = parse_directory_for_events(path_to_dir, fs,
-                                                               file_list[i*num_files_in_batch:i*num_files_in_batch + num_files_in_batch])
-        with h5py.File(r'C:\Users\user\Desktop\Sound_generator\processed_h5\{}_{}.h5'.format(first,last), 'w') as hf:
-            hf.create_dataset("data", data=X)
-            hf.create_dataset("labels", data=y)
+                                                             file_list[i*num_files_in_batch:i*num_files_in_batch + num_files_in_batch])
+        print(X.shape)
+        sum_shapes += X.shape[0]
+#        with h5py.File(r'C:\Users\user\Desktop\Sound_generator\processed_h5\{}_{}.h5'.format(first,last), 'w') as hf:
+#            hf.create_dataset("data", data=X)
+#            hf.create_dataset("labels", data=y)
+    return sum_shapes
 
 def monophonize(piano_roll, channel=1):
     piano_roll = np.vstack([piano_roll,np.zeros((1,piano_roll.shape[1]))])
