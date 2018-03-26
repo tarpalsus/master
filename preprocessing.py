@@ -13,12 +13,25 @@ OUT_MAX_LEN = 1
 NUM_CHANNELS = 4
 fs=50
 PITCHES = 128
+PITCHES = 66
 PITCHES_REPRESS = PITCHES + 1
 PITCHES_SILENCE = PITCHES_REPRESS  + 1
 from note_events import create_events_from_midi, encode_events, MAX_LEN
 from Midi_Parser import MidiParser
 import random
 
+
+def squeeze_roll(roll, min_pitch=34, max_pitch=100):
+    return roll[min_pitch:max_pitch,:]
+
+def expand_roll(roll, min_pitch=34, max_pitch=100, delete_repress=False):
+    expanded = np.zeros((129, roll.shape[1]))
+    if not delete_repress:
+        expanded[min_pitch:max_pitch,:] = roll[:-2] #+1 because of represses row
+    else:
+        expanded[min_pitch:max_pitch,:] = roll[:-1]
+    expanded[-1]=roll[-1]
+    return expanded
 
 def find_represses(roll):
     roll2 = np.roll(roll, 1)
@@ -27,12 +40,12 @@ def find_represses(roll):
     small_diff=diff * (abs(diff)<30).astype(float)
     ticks = np.argwhere(diff>0)[:,1]
     roll = np.vstack((roll, np.zeros((1,roll.shape[1]))))
-    roll[PITCHES, ticks] = 1
+    roll[-1, ticks] = 1
     return roll
 
-def create_sequences(monophonic_roll, maxlen=MAX_LEN, 
+def create_sequences(monophonic_roll, maxlen=MAX_LEN,
                      output_maxlen=OUT_MAX_LEN, pitches=PITCHES_SILENCE):
-    step=10
+    step=25
     num_seq = int((monophonic_roll.shape[1]-maxlen- output_maxlen)/step)
     X = np.zeros([num_seq, maxlen, pitches])
     y = np.zeros([num_seq, output_maxlen, pitches])
@@ -48,7 +61,7 @@ def create_sequences(monophonic_roll, maxlen=MAX_LEN,
     y = np.moveaxis(y, -1, 0)
     return X, y
 
-def create_sequences_fast(monophonic_roll, maxlen=MAX_LEN, output_maxlen=OUT_MAX_LEN, pitches=PITCHES_REPRESS):
+def create_sequences_fast(monophonic_roll, maxlen=MAX_LEN, output_maxlen=OUT_MAX_LEN, pitches=PITCHES_SILENCE):
     step=1
     num_seq = int((monophonic_roll.shape[1]-maxlen- output_maxlen)/step)
     X = np.zeros([num_seq, maxlen,pitches])
@@ -57,10 +70,12 @@ def create_sequences_fast(monophonic_roll, maxlen=MAX_LEN, output_maxlen=OUT_MAX
     for i in range(0, num_seq):
         roll_part= monophonic_roll[:,i*step:i*step+maxlen].T
         #if not np.all(roll_part[:, 128]) and not np.all(roll_part[:, 129]): #erase silence only samples
-        if np.sum(roll_part[:, 128]) < 20 :  
+        if np.sum(roll_part[:, -1]) < 20 and np.sum(roll_part[:, -2]) >= 2 : #silence less than 20 sounds, at least one note start
             X[j,:,:] = roll_part
             y[j,:,:] = monophonic_roll[:,i*step+maxlen:i*step + maxlen + output_maxlen].T
             j+=1
+    X = np.delete(X, (-2), axis=2)
+    y = np.delete(y, (-2), axis=2)
     return X[:j,:,:], y[:j,:,:]
 
 
@@ -77,39 +92,38 @@ def parse_directory(path_to_directory, file_list):
 def create_dataset(midis, fs=4, poly=False):
     if isinstance(midis,list):
         roll = midis[0].midi_file.get_piano_roll(fs)
+        roll = squeeze_roll(roll)
         roll_repress = find_represses(roll)
         roll_ones = (roll_repress>0).astype(float)
-        if poly:   
+        if poly:
             seq = polyphonize(roll_ones)
         else:
             seq= monophonize(roll_ones)
-            seq = np.delete(seq, (129), axis=0)
         X, y = create_sequences_fast(seq)
         for midi_obj in midis[1:]:
             roll = midi_obj.midi_file.get_piano_roll(fs)
+            roll = squeeze_roll(roll)
             roll_repress = find_represses(roll)
             roll_ones = (roll_repress>0).astype(float)
-            if poly:   
+            if poly:
                 seq = polyphonize(roll_ones)
             else:
                 seq= monophonize(roll_ones)
-                seq = np.delete(seq, (129), axis=0)
             X_piece, y_piece = create_sequences_fast(seq)
             print(X.shape)
             X = np.concatenate((X,X_piece),axis=0)
             #rolls = np.concatenate((rolls, roll_ones),axis=1)
-            
+
             y = np.concatenate((y,y_piece),axis=0)
     else:
         roll = midis.midi_file.get_piano_roll(fs)
+        roll = squeeze_roll(roll)
         roll_repress = find_represses(roll)
         roll_ones = (roll_repress>0).astype(float)
-        if poly:   
+        if poly:
             seq = polyphonize(roll_ones)
         else:
             seq = monophonize(roll_ones)
-            
-            seq = np.delete(seq, (129), axis=0)
         X, y = create_sequences_fast(seq)
     return X, y
 
@@ -139,12 +153,12 @@ def parse_directory_for_events(path_to_directory, fs, file_list, max_pitch=128, 
         encoded_iter_stack = encoded_iter
         events = events + events_iter
         np_events = np.concatenate((np_events,np_events_iter),axis=0)
-        encoded_stack = np.concatenate((encoded_stack,encoded_iter_stack),axis=1)  
+        encoded_stack = np.concatenate((encoded_stack,encoded_iter_stack),axis=1)
         print(encoded_iter_stack.shape)
         X_iter, y_iter = create_sequences_fast(encoded_iter_stack, pitches=encoded_iter_stack.shape[0])
         X = np.concatenate((X,X_iter),axis=0)
         y = np.concatenate((y,y_iter),axis=0)
-        
+
     return events, encoded_stack, X, y
 
 def preprocess_to_hdf5(path_to_dir, num_in_batch, fs=50, midi_num=None, data_type='roll', poly=False):
@@ -154,10 +168,10 @@ def preprocess_to_hdf5(path_to_dir, num_in_batch, fs=50, midi_num=None, data_typ
     else:
         midi_files_num = len(file_list)
     num_files_in_batch = num_in_batch
-    
+
     random.shuffle(file_list, random.random)
     sum_shapes = 0
-    
+
     for i in range(0, int(midi_files_num/num_files_in_batch)):
         first = os.listdir(path_to_dir)[i]
         last = os.listdir(path_to_dir)[i+num_files_in_batch-1]
@@ -175,18 +189,16 @@ def preprocess_to_hdf5(path_to_dir, num_in_batch, fs=50, midi_num=None, data_typ
 #            hf.create_dataset("labels", data=y)
     return sum_shapes
 
-def monophonize(piano_roll, channel=1):
+def monophonize(piano_roll, channel=1, delete_repress = False):
     piano_roll = np.vstack([piano_roll,np.zeros((1,piano_roll.shape[1]))])
     out_roll = np.zeros(piano_roll.shape)
     prev_index = None
     for i, window in enumerate(piano_roll.T):
-        if np.sum(window) ==0:
-            window[window.shape[0]-1] = 1
-        elif np.sum(window)>1:
+        if np.sum(window)>1:
             indices = np.argwhere(window == np.amax(window))
             end = indices.shape[0]
             repress = window[-2]
-            window = np.zeros(window.shape)          
+            window = np.zeros(window.shape)
             if repress:
                 index = indices[-1 -channel]
                 window[index] = 1
@@ -196,7 +208,12 @@ def monophonize(piano_roll, channel=1):
                 if prev_index == index:
                     window[index] = 1
                     prev_index = index
+            window[-2]=repress
+        if np.sum(window) ==0:
+            window[window.shape[0]-1] = 1
         out_roll[:,i] = window
+    if delete_repress:
+        out_roll = np.delete(out_roll, (-2), axis=0)
     return out_roll
 
 def monophonize_poly(piano_roll, channel=0, repress_value_encode=1):
@@ -210,7 +227,7 @@ def monophonize_poly(piano_roll, channel=0, repress_value_encode=1):
             indices = np.argwhere(window == np.amax(window))
             end = indices.shape[0]
             repress = window[-2]
-            window = np.zeros(window.shape) 
+            window = np.zeros(window.shape)
             try:
                 if repress:
                     index = indices[channel]
@@ -231,7 +248,7 @@ def polyphonize(piano_roll, num_channels=NUM_CHANNELS):
     indices_list = num_channels * [piano_roll.shape[0]-1]
     indices_list = np.array(indices_list)
     piano_roll_expanded = np.tile(piano_roll, (num_channels, 1))
-     
+
     out_roll = np.zeros(piano_roll_expanded.shape)
 
     for i, window in enumerate(piano_roll.T):
@@ -239,7 +256,7 @@ def polyphonize(piano_roll, num_channels=NUM_CHANNELS):
         if np.sum(window) ==0:
             window_expanded[window_expanded.shape[0]-1] = 1 #Encoding of total silence, not sure if necessary
         elif np.sum(window)>=1:
-            if np.sum(window) == 1:  
+            if np.sum(window) == 1:
                 indices = np.argwhere(window == np.amax(window))[:NUM_CHANNELS]
             else:
                 indices = np.squeeze(np.argwhere(window == np.amax(window)))[:NUM_CHANNELS]
@@ -252,7 +269,7 @@ def polyphonize(piano_roll, num_channels=NUM_CHANNELS):
     return out_roll
 
 
-if __name__ =='__main__': 
+if __name__ =='__main__':
     file_list =  os.listdir(r'C:\Users\user\Desktop\Sound_generator\piano_midi')[:3]
     events, encoded, X ,y = parse_directory_for_events(r'C:\Users\user\Desktop\Sound_generator\piano_midi',50, file_list)
     preprocess_to_hdf5(r'C:\Users\user\Desktop\Sound_generator\piano_midi', 1, midi_num=1, data_type='events')

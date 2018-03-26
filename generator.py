@@ -11,7 +11,7 @@ from Midi_Parser import MidiParser
 from midi_test import NUM_CHANNELS, PITCHES, MAX_LEN, note_events_to_midi, transform_to_midi
 import random
 from keras.models import load_model
-from preprocessing import create_dataset
+from preprocessing import create_dataset, expand_roll
 
 def sample(preds, temperature=1.0):
     # helper function to sample an index from a probability array
@@ -72,8 +72,8 @@ def generate(X, model, maxlen, seq_len, poly, iters):
     for i in range(iters):
         seed = select_random_seed(X, maxlen)
         #generated = gen(model, seed, maxlen, maxlen)
-        low = chain_predictions(model, seed, 0.1, seq_len, poly)
-        mid = chain_predictions(model, seed, 0.5, seq_len, poly)
+        low = chain_predictions(model, seed, 0.3, seq_len, poly)
+        mid = chain_predictions(model, seed, 0.7, seq_len, poly)
         high = chain_predictions(model, seed, 1, seq_len, poly)
         temperatures_low.append(low)
         temperatures_mid.append(mid)
@@ -85,16 +85,18 @@ def generate(X, model, maxlen, seq_len, poly, iters):
 
 
 if __name__ =='__main__':
-    model_path = r"C:\Users\user\Desktop\Sound_generator\models\simple_quick.h5"
-    #model_path = r"C:\Users\user\Desktop\Sound_generator\lstm.h5"
-    seed_file = r"C:\Users\user\Desktop\Sound_generator\piano_midi\bach_846.mid"
+    #model_path = r"C:\Users\user\Desktop\Sound_generator\models\simple_quick.h5"
+    model_path = r"C:\Users\Maciek\Downloads\master-master\master-master\lstm_repress_filtered.h5"
+    #seed_file = r"C:\Users\user\Desktop\Sound_generator\piano_midi\bach_846.mid"
+    seed_file = r"C:\Users\Maciek\Downloads\inputs\bach_846.mid"
+    out_path=r"C:\Users\Maciek\Downloads\master-master\master-master\{}.mid"
     fs=50
-    seq_len = 100
+    seq_len = 1000
     midi_file = pretty_midi.PrettyMIDI(seed_file)
     midi_obj = MidiParser(midi_file)
     X,y = create_dataset(midi_obj, fs=fs)
     poly=False
-    
+
     model = load_model(model_path)
     seeds, high, low, mid = generate(X, model, MAX_LEN, seq_len, poly, iters=5)
     all_notes = []
@@ -105,14 +107,14 @@ if __name__ =='__main__':
 #        except:
 #            print('Wrong midi created for {}'.format(i))
     for i,melody in enumerate(high):
-        x = np.array(melody)   
-        x = np.squeeze(x)
-        seed = np.squeeze(seeds[i])
+        x = np.array(melody)
+        x = expand_roll(np.squeeze(x).T, delete_repress=True).T
+        seed = expand_roll(np.squeeze(seeds[i]).T, delete_repress=True).T
         combine = np.concatenate((seed,x))
-        transform_to_midi(combine,'gen_high_new{}'.format(i), poly, fs)
+        transform_to_midi(x,'gen_high_new{}'.format(i), out_path, poly, fs)
     for i,melody in enumerate(mid):
-        x = np.array(melody)   
-        x = np.squeeze(x)
-        seed = np.squeeze(seeds[i])
+        x = np.array(melody)
+        x = expand_roll(np.squeeze(x).T, delete_repress=True).T
+        seed = expand_roll(np.squeeze(seeds[i]).T, delete_repress=True).T
         combine = np.concatenate((seed,x))
-        transform_to_midi(combine,'gen_low_mid{}'.format(i), poly, fs)
+        transform_to_midi(x,'gen_mid_{}'.format(i), out_path,  poly, fs)

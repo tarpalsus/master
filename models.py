@@ -20,35 +20,34 @@ from Midi_Parser import MidiParser
 from keras import backend as K
 MAX_LEN = 25
 OUT_MAX_LEN = 1
-PITCHES = 129
-
+from preprocessing import PITCHES_REPRESS
 NUM_CHANNELS = 4
-INPUT_DIM = NUM_CHANNELS * PITCHES
-INPUT_DIM = PITCHES
+INPUT_DIM = NUM_CHANNELS * PITCHES_REPRESS
+INPUT_DIM = PITCHES_REPRESS
 
 #Regular models
-def simple(maxlen, input_dim=PITCHES):
+def simple(maxlen, input_dim=INPUT_DIM):
     model = Sequential()
 #    model.add(LSTM(512, input_shape=(maxlen, input_dim), return_sequences=True))
 #    model.add(Dropout(0.5))
 #    model.add(LSTM(512, input_shape=(maxlen, input_dim),
 #                  return_sequences=True, dropout_U=0.5))
 #    model.add(Dropout(0.5))
-    model.add(LSTM(128, input_shape=(maxlen, input_dim), dropout_U=0.2))
+    model.add(LSTM(512, input_shape=(maxlen, input_dim), dropout_U=0.5))
     model.add(Dense(input_dim))
     model.add(Activation('softmax'))
-    optimizer = Adam(lr=0.001)
+    optimizer = Adam(lr=0.001, clipvalue=0.5)
     model.compile(loss='categorical_crossentropy', optimizer=optimizer, metrics=['accuracy'])
     return model
 
-def prepare_model_keras(maxlen, input_dim=PITCHES):
+def prepare_model_keras(maxlen, input_dim=INPUT_DIM):
     model = Sequential()
-    model.add(LSTM(512, input_shape=(maxlen, input_dim), return_sequences=True))
+    model.add(LSTM(128, input_shape=(maxlen, input_dim), return_sequences=True))
     model.add(Dropout(0.5))
-    model.add(LSTM(512, input_shape=(maxlen, input_dim),
+    model.add(LSTM(128, input_shape=(maxlen, input_dim),
                   return_sequences=True, dropout_U=0.5))
     model.add(Dropout(0.5))
-    model.add(LSTM(512, input_shape=(maxlen, input_dim), dropout_U=0.5))
+    model.add(LSTM(128, input_shape=(maxlen, input_dim), dropout_U=0.5))
     model.add(Dense(input_dim))
     model.add(Activation('softmax'))
     optimizer = Adam(lr=0.001)
@@ -68,7 +67,7 @@ def prepare_conv_lstm(maxlen, num_channels):
     model.summary()
     model.compile(loss='binary_crossentropy', optimizer='adadelta')
     return model
-    
+
 
 
 #Attention building functions
@@ -111,15 +110,15 @@ def discriminator(maxlen=MAX_LEN, depth = 64):
 #    model.add(Conv2D(depth*1, 5, strides=2,
 #                     padding='same', activation='relu',  input_shape=(MAX_LEN, INPUT_DIM,1)))
 #    model.add(Dropout(0.9))
-#    model.add(Conv2D(depth*2, 5, strides=2, 
+#    model.add(Conv2D(depth*2, 5, strides=2,
 #                     padding='same', activation='relu'))
 #    model.add(Dropout(0.9))
-#    model.add(Conv2D(depth*4, 5, strides=2, 
+#    model.add(Conv2D(depth*4, 5, strides=2,
 #                     padding='same', activation='relu'))
 #    model.add(Dropout(0.5))
 #    model.add(Conv2D(depth*8, 5, strides=2,
 #                     padding='same', activation='relu'))
-    
+
     model.add(Flatten(input_shape=(MAX_LEN, INPUT_DIM,1)))
     model.add(Dense(1))
     model.add(Activation('sigmoid'))
@@ -128,8 +127,8 @@ def discriminator(maxlen=MAX_LEN, depth = 64):
     model.compile(loss='binary_crossentropy', optimizer=optimizer,\
     metrics=['accuracy'])
     return model
-  
-    
+
+
 def adversarial(generator, discriminator):
     optimizer = Adam(0.0002, 0.5)
     discriminator.trainable = False
@@ -137,10 +136,10 @@ def adversarial(generator, discriminator):
     model.add(generator)
     model.add(discriminator)
     model.compile(loss='binary_crossentropy', optimizer=optimizer,\
-    metrics=['accuracy'])   
+    metrics=['accuracy'])
     model.summary()
     return model
-    
+
 def generator(maxlen = MAX_LEN):
     optimizer = Adam(0.0002, 0.5)
     noise_shape = (100,)
@@ -156,10 +155,10 @@ def generator(maxlen = MAX_LEN):
     model.add(BatchNormalization(momentum=0.8))
     model.add(Dense(MAX_LEN * INPUT_DIM, activation='tanh'))
     model.add(Reshape((MAX_LEN,INPUT_DIM)))
-    
+
     model.summary()
     model.compile(loss='binary_crossentropy', optimizer=optimizer,\
-    metrics=['accuracy'])  
+    metrics=['accuracy'])
     return model
 
 

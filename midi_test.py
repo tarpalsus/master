@@ -4,6 +4,13 @@ Created on Sat Jan 20 18:37:22 2018
 
 @author: Maciek
 """
+#Wnioski:
+#Zmiana stepu na wiekszy dobrze wplywa na proces uczenia, szybciej zbiega, val_loss tez zatrzymuje sie na
+#nizszym poziomie
+
+
+
+
 import os
 os.environ["PATH"] += os.pathsep + 'C:/Program Files (x86)/Graphviz2.38/bin/'
 
@@ -29,15 +36,17 @@ from keras import backend as K
 from models import prepare_attention, prepare_model_keras, build_and_run_model, \
 discriminator, adversarial, generator, prepare_conv_lstm, simple
 
-from seq2seq_models import seq2seq_model, simple_seq2seq_model, attention_seq2seq_model
+#from seq2seq_models import seq2seq_model, simple_seq2seq_model, attention_seq2seq_model
 from vae import simple_encoder, vae_encoder
 import h5py
 from preprocessing import polyphonize, monophonize, create_sequences, \
 create_dataset, preprocess_to_hdf5, parse_directory, parse_directory_for_events, \
-monophonize_poly, find_represses, PITCHES, PITCHES_SILENCE, PITCHES_REPRESS
+monophonize_poly, find_represses, squeeze_roll, expand_roll, \
+ PITCHES, PITCHES_SILENCE, PITCHES_REPRESS
 from note_events import note_events_to_midi, MAX_LEN
 from keras.utils import plot_model
 from matplotlib import pyplot as plt
+from sklearn.utils import resample
 
 import random
 import itertools
@@ -55,14 +64,14 @@ def glue_polyphony(polyphonic_roll, num_channels = NUM_CHANNELS):
     for i in range(1,num_channels):
         output = output + polyphonic_roll[(PITCHES) * i:(PITCHES) * (i+1),:]
     return output
-    
+
 
 def piano_roll_to_midi(windows, fs,
                            instrument_name='Acoustic Grand Piano',
                            allow_represses=False):
 
     midi = pretty_midi.PrettyMIDI()
-    
+
     instruments = []
     for i in range(NUM_CHANNELS):
         instrument_program = pretty_midi.instrument_name_to_program(instrument_name)
@@ -126,8 +135,8 @@ def piano_roll_to_midi_mono(windows, fs,
 
 
 
-def transform_to_midi(x, name, poly=False, fs=96):
-    x = np.array(x)   
+def transform_to_midi(x, name, dir_path=r'C:\Users\user\Desktop\Sound_generator\midis\{}.mid', poly=False, fs=96):
+    x = np.array(x)
     x = np.squeeze(x)
     if poly:
         glued = glue_polyphony(x)
@@ -137,7 +146,7 @@ def transform_to_midi(x, name, poly=False, fs=96):
     glued = (glued>0).astype(float)
     glued[-1,:] = np.zeros(128)
     midi_obj_from_roll = piano_roll_to_midi_mono(glued, fs)
-    midi_obj_from_roll.write(r'C:\Users\user\Desktop\Sound_generator\midis\{}.mid'.format(name))
+    midi_obj_from_roll.write(dir_path.format(name))
     return glued
 
 
@@ -152,7 +161,7 @@ def reshape_seq(x):
 
 
 
-    
+
 def combine_history(histories):
     combined = {}
     for value in ['val_loss', 'loss', 'acc', 'val_acc']:
@@ -161,15 +170,15 @@ def combine_history(histories):
     return combined
 
 def train_from_h5(h5_files,model):
-    tensorboard = keras.callbacks.TensorBoard(log_dir="logs/midis", 
-                                              write_graph=True, 
+    tensorboard = keras.callbacks.TensorBoard(log_dir="logs/midis",
+                                              write_graph=True,
                                               write_images=True)
     histories = []
     for file in h5_files:
         with h5py.File(file, 'r') as hf:
             X = hf['data'][:]
             y = np.squeeze(hf['labels'][:])
-            history = model.fit(X,y, epochs=3, batch_size=128, 
+            history = model.fit(X,y, epochs=3, batch_size=128,
                                 callbacks = [tensorboard], validation_split=0.2)
             histories.append(history.history)
     return model, X, combine_history(histories)
@@ -222,9 +231,9 @@ def sampleGenerator(midis, batch_size, fs=50, shuffle_piece=True):
       # Infinite loop
       while 1:
           # Generate order of exploration of dataset
-          
+
           # Generate batches
-          
+
           for midi in midis:
               # Find list of IDs
               #midis_temp = midis[i*batch_size:(i+1)*batch_size]
@@ -234,7 +243,7 @@ def sampleGenerator(midis, batch_size, fs=50, shuffle_piece=True):
               indexes = np.arange(imax)
               if shuffle_piece:
                   random.shuffle(indexes)
-              for i in indexes:    
+              for i in indexes:
                   yield X[i*batch_size:(i+1)*batch_size,:,:], np.squeeze(y[i*batch_size:(i+1)*batch_size,:,:])
 
 
@@ -266,24 +275,29 @@ if __name__ == '__main__':
     single = False
     fs = 50
     poly = False
-    generator = True
+    generator = False
     start = time.time()
     seq_len = 100
     if single:
-        midi_file = pretty_midi.PrettyMIDI(r"C:\Users\user\Desktop\Sound_generator\piano_midi\bach_846.mid")
+        #midi_file = pretty_midi.PrettyMIDI(r"C:\Users\user\Desktop\Sound_generator\piano_midi\bach_846.mid")
+        midi_file= pretty_midi.PrettyMIDI(r"C:\Users\Maciek\Downloads\inputs\bach_846.mid")
         midi_obj = MidiParser(midi_file)
         notes2 = midi_obj.get_note_names()
         roll = midi_obj.midi_file.get_piano_roll(fs)
-        roll_repress = find_represses(roll)
+        squeezed = squeeze_roll(roll)
+        #squeezed = roll
+        roll_repress = find_represses(squeezed)
         roll_ones = (roll_repress>0).astype(float)
-    
+
         sums = np.sum(roll_ones,axis=0)
-        midi_obj.write(r'C:\Users\user\Desktop\Sound_generator\test_no_dur.mid')
-        monophonic = monophonize(roll_ones)
+        #midi_obj.write(r'C:\Users\user\Desktop\Sound_generator\test_no_dur.mid')
+        repress = False
+        monophonic = monophonize(roll_ones, delete_repress=repress)
+
         poly = np.zeros(monophonic.shape)
         for i in range(4):
             monophonic1= monophonize_poly(roll_ones,i)
-            channel_roll = monophonic1[:128,:] * roll
+            channel_roll = monophonic1[:-2,:] * squeezed
             channel_rep1 = (find_represses(channel_roll)>0).astype(float)
             monophonic1 = monophonize_poly(channel_rep1,0,repress_value_encode=0)
             poly +=monophonic
@@ -291,8 +305,8 @@ if __name__ == '__main__':
         monophonic3= monophonize_poly(roll_ones,2)
         monophonic4= monophonize_poly(roll_ones,3)
         poly = monophonic1 + monophonic2 + monophonic3+monophonic4
-    
-        midi_obj_from_roll = piano_roll_to_midi_mono(monophonic.T, fs)
+        monophonic_unsq = expand_roll(monophonic, delete_repress=repress)
+        midi_obj_from_roll = piano_roll_to_midi_mono(monophonic_unsq.T, fs)
         #midi_obj_from_roll, notes = piano_roll_to_midi(roll_ones.T, fs)
         #notes = midi_obj_from_roll.instruments[0].notes
         #notes = midi_obj.get_pitches
@@ -300,14 +314,16 @@ if __name__ == '__main__':
         #output = midi_obj.prepare_output()
         #midi_obj.transform(output)
         midi_obj_from_roll2, notes2 = piano_roll_to_midi(poly.T, fs)
-        midi_obj_from_roll2.write(r'C:\Users\user\Desktop\Sound_generator\test_dur2.mid')
-        midi_obj_from_roll.write(r'C:\Users\user\Desktop\Sound_generator\test_dur.mid')
+        #midi_obj_from_roll2.write(r'C:\Users\user\Desktop\Sound_generator\test_dur2.mid')
+        #midi_obj_from_roll.write(r'C:\Users\user\Desktop\Sound_generator\test_dur.mid')
+        midi_obj_from_roll.write(r'C:\Users\Maciek\Downloads\master-master\test_dur.mid')
 #        notes_class = midi_obj.midi_file.instruments[0].notes
         #X, y = create_sequences(monophonic)
         #X2 = np.repeat(X[:, :, :, np.newaxis, np.newaxis], 4, axis=3)
     elif generator:
         start = time.time()
         path_to_directory = r'C:\Users\user\Desktop\Sound_generator\piano_midi'
+        path_to_directory = r"C:\Users\Maciek\Downloads\inputs"
         num_in_batch=7
         midi_num = None
         #preprocess_to_hdf5(path_to_directory, num_in_batch,fs, midi_num, data_type='roll')
@@ -317,7 +333,7 @@ if __name__ == '__main__':
         h5_files = [r"C:\Users\user\Desktop\Sound_generator\processed_h5" + "\\"+file for file in files]
         #model, X, history = train_from_h5(h5_files[:2], model)
         model_path = r"C:\Users\user\Desktop\Sound_generator\models\lstm_128"
-       
+
 
 #        model = load_model(model_path+'.h5')
         histories = []
@@ -330,15 +346,16 @@ if __name__ == '__main__':
         end = time.time() - start
         print(end)
         #history = combine_history(histories)
-      
+
         model.save(model_path+".h5")
         plot_model(model, to_file=model_path+'.png')
         vis(history, model_path)
     else:
-        file_list = os.listdir(path_to_directory)[17:18]
+        path_to_directory = r"C:\Users\Maciek\Downloads\inputs"
+        file_list = os.listdir(path_to_directory)
         midis, first, last = parse_directory(path_to_directory,
                                                  file_list)
-        X,y = create_dataset(midis,50)   
+        X,y = create_dataset(midis,fs)
 #    print("Dataset generated")
 #    print(start - time.time())
 #    start_learning = time.time()
@@ -351,7 +368,7 @@ if __name__ == '__main__':
         else:
             SAVE = True
             LOAD = False
-            model_path = 'lstm.h5'
+            model_path = 'lstm_repress_filtered.h5'
             if LOAD:
                 model = load_model(model_path)
             else:
@@ -366,7 +383,7 @@ if __name__ == '__main__':
                     for i in range(training_steps):
                         x = X[i*batch_size:(i+1)*batch_size,:,:]
                         size = x.shape[0]
-                        
+
                         if not discriminator_model:
                             discriminator_model = discriminator()
                         if not generator_model:
@@ -375,7 +392,7 @@ if __name__ == '__main__':
                             adversarial_model = adversarial(generator_model, discriminator_model)
                         noise = np.random.uniform(0, 1.0, size=[batch_size, 100])
                         fakes = generator_model.predict(noise)
-                       
+
                         x = np.concatenate((x, fakes))
                         x = np.expand_dims(x,axis=3)
                         y = np.zeros([2*batch_size, 1])
@@ -383,14 +400,14 @@ if __name__ == '__main__':
                         d_loss = discriminator_model.train_on_batch(x, y)
                         y = np.ones([batch_size, 1])
                         noise = np.random.uniform(0, 1.0, size=[batch_size, 100])
-                        
+
                         #a_loss = adversarial_model.fit(noise, y, epochs=15)
                         a_loss = adversarial_model.train_on_batch(noise, y)
-        
+
                         log_mesg = "%d: [D loss: %f, acc: %f]" % (i, d_loss[0], d_loss[1])
-            
+
                         log_mesg = "%s  [A loss: %f, acc: %f]" % (log_mesg, a_loss[0], a_loss[1])
-            
+
                         print(log_mesg)
                 elif encoder:
                     encoder, decoder, autoencoder = simple_encoder(input_len = MAX_LEN,
@@ -413,12 +430,17 @@ if __name__ == '__main__':
                         y = np.squeeze(y)
                         #y2 = np.squeeze(y2)
                         model = simple(MAX_LEN)
+                        #model = prepare_model_keras(MAX_LEN)
                         model2 = prepare_conv_lstm(MAX_LEN, NUM_CHANNELS)
                     y2= np.repeat(y[:, :, np.newaxis, np.newaxis], 4, axis=2)
+                    randomize = np.arange(len(X))
+                    np.random.shuffle(randomize)
+                    X = X[randomize]
+                    y = y[randomize]
                     model.fit(X,y,batch_size=128,epochs=15, validation_split=0.1)
                     #model2.fit(X2,y2,batch_size=128,epochs=10, validation_split=0.1)
-                    
-#                    seed = select_random_seed(X, MAX_LEN)
+
+                    seed = select_random_seed(X, MAX_LEN)
 #                    pred = model.predict(seed)
 #                    seed = np.repeat(seed[:, :, :, np.newaxis, np.newaxis], 4, axis=3)
 #                    pred2 = model2.predict(seed)
@@ -434,8 +456,8 @@ if __name__ == '__main__':
 #                transform_to_midi(melody,'gen_high_{}'.format(i), poly, fs)
 #            for i,melody in enumerate(low):
 #                transform_to_midi(melody,'gen_low_{}'.format(i), poly, fs)
-#        
+#
 #        main()
 #        high = high.reshape([high.shape[1],high.shape[2]])
-#        
+#
 #        midi_obj_from_roll =  piano_roll_to_midi(high.T, fs)
