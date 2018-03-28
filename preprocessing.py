@@ -62,7 +62,7 @@ def create_sequences(monophonic_roll, maxlen=MAX_LEN,
     return X, y
 
 def create_sequences_fast(monophonic_roll, maxlen=MAX_LEN, output_maxlen=OUT_MAX_LEN, pitches=PITCHES_SILENCE):
-    step=1
+    step=10
     num_seq = int((monophonic_roll.shape[1]-maxlen- output_maxlen)/step)
     X = np.zeros([num_seq, maxlen,pitches])
     y = np.zeros([num_seq, output_maxlen, pitches])
@@ -70,7 +70,7 @@ def create_sequences_fast(monophonic_roll, maxlen=MAX_LEN, output_maxlen=OUT_MAX
     for i in range(0, num_seq):
         roll_part= monophonic_roll[:,i*step:i*step+maxlen].T
         #if not np.all(roll_part[:, 128]) and not np.all(roll_part[:, 129]): #erase silence only samples
-        if np.sum(roll_part[:, -1]) < 20 and np.sum(roll_part[:, -2]) >= 2 : #silence less than 20 sounds, at least one note start
+        if np.sum(roll_part[:, -1]) < 20:# and np.sum(roll_part[:, -2]) >= 2 : #silence less than 20 sounds, at least one note start
             X[j,:,:] = roll_part
             y[j,:,:] = monophonic_roll[:,i*step+maxlen:i*step + maxlen + output_maxlen].T
             j+=1
@@ -100,6 +100,7 @@ def create_dataset(midis, fs=4, poly=False):
         else:
             seq= monophonize(roll_ones)
         X, y = create_sequences_fast(seq)
+        #print(X.shape)
         for midi_obj in midis[1:]:
             roll = midi_obj.midi_file.get_piano_roll(fs)
             roll = squeeze_roll(roll)
@@ -110,10 +111,10 @@ def create_dataset(midis, fs=4, poly=False):
             else:
                 seq= monophonize(roll_ones)
             X_piece, y_piece = create_sequences_fast(seq)
-            print(X.shape)
+            
             X = np.concatenate((X,X_piece),axis=0)
             #rolls = np.concatenate((rolls, roll_ones),axis=1)
-
+            #print(X.shape)
             y = np.concatenate((y,y_piece),axis=0)
     else:
         roll = midis.midi_file.get_piano_roll(fs)

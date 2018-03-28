@@ -12,7 +12,7 @@ import os
 from Midi_Parser import MidiParser
 import math
 BEAT_PARTS = 6
-MAX_LEN = 25
+MAX_LEN = 10
 OUTPUT_MAX_LEN = 1
 NUM_CHANNELS = 5
 #Jesli midi_file resolution jest 480, to znaczy, że tyle trwa cwiercnuta
