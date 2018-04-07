@@ -33,7 +33,11 @@ def simple(maxlen, input_dim=INPUT_DIM):
 #    model.add(LSTM(512, input_shape=(maxlen, input_dim),
 #                  return_sequences=True, dropout_U=0.5))
 #    model.add(Dropout(0.5))
-    model.add(LSTM(128, input_shape=(maxlen, input_dim), dropout_U=0.5))
+    model.add(LSTM(64, input_shape=(maxlen, input_dim), dropout_U=0.5, return_sequences=True))
+    model.add(Dropout(0.5))
+    model.add(LSTM(64, input_shape=(maxlen, input_dim), dropout_U=0.5, return_sequences=True))
+    model.add(Dropout(0.5))
+    model.add(LSTM(64, input_shape=(maxlen, input_dim), dropout_U=0.5))
     model.add(Dense(input_dim))
     model.add(Activation('softmax'))
     optimizer = Adam(lr=0.001, clipvalue=0.5)

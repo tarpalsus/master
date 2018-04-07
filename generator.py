@@ -85,11 +85,12 @@ def generate(X, model, maxlen, seq_len, poly, iters):
 
 
 if __name__ =='__main__':
-    #model_path = r"C:\Users\user\Desktop\Sound_generator\models\simple_quick.h5"
-    model_path = r"C:\Users\Maciek\Downloads\master-master\master-master\lstm_repress_filtered.h5"
-    #seed_file = r"C:\Users\user\Desktop\Sound_generator\piano_midi\bach_846.mid"
-    seed_file = r"C:\Users\Maciek\Downloads\inputs\bach_846.mid"
-    out_path=r"C:\Users\Maciek\Downloads\master-master\master-master\{}.mid"
+    model_path = r"C:\Users\user\Desktop\Sound_generator\models\test.h5"
+    #model_path = r"C:\Users\Maciek\Downloads\master-master\master-master\lstm_repress_filtered.h5"
+    seed_file = r"C:\Users\user\Desktop\Sound_generator\piano_midi\bach_846.mid"
+    #seed_file = r"C:\Users\Maciek\Downloads\inputs\bach_846.mid"
+    #out_path=r"C:\Users\Maciek\Downloads\master-master\master-master\{}.mid"
+    out_path=r"C:\Users\user\Desktop\Sound_generator\midis\{}.mid"
     fs=50
     seq_len = 1000
     midi_file = pretty_midi.PrettyMIDI(seed_file)

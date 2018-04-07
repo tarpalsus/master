@@ -208,26 +208,36 @@ def train_from_batch(path_to_dir, num_in_batch, model, fs=50, midi_num=None, dat
     y=None
     return model, history, combine_history(histories)
 
-def train_from_generator(path_to_dir, batch_size=128, val_split=0.5):
-    file_list = os.listdir(path_to_dir)[111:117]
+def train_from_generator(path_to_dir, batch_size=512, val_split=0.2, fs=50):
+    file_list = os.listdir(path_to_dir)[100:150]
     midis, first, last = parse_directory(path_to_dir,
                                                  file_list)
     #piano midi for fs=50 has 3827803 sequences in total /512 -> 7500 steps
     DATA_LEN = 3827803
-    DATA_LEN = 400 * len(file_list)
-    midis = midis
-    random.shuffle(midis,random.random)
+    
+    #midis = midis[:80]
+    DATA_LEN = 850 * len(midis)
+    random.Random(3).shuffle(midis)
     steps_per_epoch = int((DATA_LEN / batch_size) * (1-val_split))
     print(steps_per_epoch)
     val_steps_per_epoch = int((DATA_LEN / batch_size) * (val_split))
     print(val_steps_per_epoch)
-    history= model.fit_generator(generator=sampleGenerator(midis,batch_size=batch_size),
-                                 epochs=1000, steps_per_epoch=steps_per_epoch,
-                                 validation_data=sampleGenerator(midis, batch_size=batch_size, shuffle_piece=False, train=False),
+    history= model.fit_generator(generator=sampleGenerator(midis,batch_size=batch_size, fs=fs),
+                                 epochs=20, steps_per_epoch=steps_per_epoch,
+                                 validation_data=sampleGenerator(midis, batch_size=batch_size, shuffle_piece=False, train=False,fs=fs),
                                  validation_steps=val_steps_per_epoch)
     return model, history
 
-def sampleGenerator(midis, batch_size, fs=50, shuffle_piece=False, train=True):
+def randomize_set(X, y, seed=None):
+    np.random.seed(seed)
+    randomize = np.arange(len(X))
+
+    np.random.shuffle(randomize)
+    X = X[randomize]
+    y = y[randomize]
+    return X, y
+
+def sampleGenerator(midis, batch_size, fs=50, shuffle_piece=False, train=True, midi_batch=5):
       'Generates batches of samples'
       # Infinite loop
       while 1:
@@ -235,34 +245,35 @@ def sampleGenerator(midis, batch_size, fs=50, shuffle_piece=False, train=True):
 
           # Generate batches
           #random.shuffle(midis,random.random)
-          for i in range(int(len(midis)/3)):
+          for i in range(int(len(midis)/midi_batch)):
               # Find list of IDs
               #midis_temp = midis[i*batch_size:(i+1)*batch_size]
               # Generate data
-              X, y = create_dataset(midis[i:i+3], fs=fs, poly=False)
+              
+              X, y = create_dataset(midis[i*midi_batch:(i+1)*midi_batch], fs=fs, poly=False)
               #X_train, X_test, y_train, y_test = train_test_split(X, y,
                #                                                   test_size=0.2,
                 #                                                  random_state=7)
-
-              
-
-              imax = int(X.shape[0]/batch_size) - 1
-              indexes = np.arange(imax)
-
-              randomize = np.arange(len(X))
-              np.random.seed(0)
-              np.random.shuffle(randomize)
-              X = X[randomize]
-              y = y[randomize]
-              if train:
-                  X = X[:int(0.8*len(X))]
-                  y = y[:int(0.8*len(y))]
+              X, y = randomize_set(X, y, seed=5)
+              if train:      
+                  X = X[:int(0.8*len(X))]            
+                  y = y[:int(0.8*len(y))]     
+                  X, y = randomize_set(X, y)
+                  imax = int(X.shape[0]/batch_size) - 1
+                  indexes = np.arange(imax)
                   for j in indexes:
                       yield X[j*batch_size:(j+1)*batch_size,:,:], np.squeeze(y[j*batch_size:(j+1)*batch_size,:,:])
               else:
                   X = X[int(0.8*len(X)):]
                   y = y[int(0.8*len(y)):]
-                  yield X, np.squeeze(y)
+                  imax = int(X.shape[0]/batch_size) - 1
+                  indexes = np.arange(imax)
+                  if imax == 0 :
+                      yield X, np.squeeze(y)
+                  else:
+                      for j in indexes:
+                          yield X[j*batch_size:(j+1)*batch_size,:,:], np.squeeze(y[j*batch_size:(j+1)*batch_size,:,:])
+                  #yield X, np.squeeze(y)
               if shuffle_piece:
                   random.shuffle(indexes)
               
@@ -293,6 +304,7 @@ def vis(history, save_path):
 
 #for path in list:
 if __name__ == '__main__':
+    
     single = False
     fs = 50
     poly = False
@@ -300,7 +312,7 @@ if __name__ == '__main__':
     start = time.time()
     seq_len = 100
     if single:
-        midi_file = pretty_midi.PrettyMIDI(r"C:\Users\user\Desktop\Sound_generator\piano_midi\bach_846.mid")
+        midi_file = pretty_midi.PrettyMIDI(r"C:\Users\user\Desktop\Sound_generator\test\clementi_opus36_2_3.mid")
         #midi_file= pretty_midi.PrettyMIDI(r"C:\Users\Maciek\Downloads\inputs\bach_846.mid")
         midi_obj = MidiParser(midi_file)
         notes2 = midi_obj.get_note_names()
@@ -359,7 +371,7 @@ if __name__ == '__main__':
 #        model = load_model(model_path+'.h5')
         histories = []
         #model,history = train_from_batch(path_to_directory,num_in_batch, model)
-        model,history = train_from_generator(path_to_directory)
+        model,history = train_from_generator(path_to_directory,fs=fs)
         history = history.history
 #        for i in range(5):
 #            model,history = train_from_batch(path_to_directory,num_in_batch, model)

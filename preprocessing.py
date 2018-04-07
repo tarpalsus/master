@@ -111,7 +111,6 @@ def create_dataset(midis, fs=4, poly=False):
             else:
                 seq= monophonize(roll_ones)
             X_piece, y_piece = create_sequences_fast(seq)
-            
             X = np.concatenate((X,X_piece),axis=0)
             #rolls = np.concatenate((rolls, roll_ones),axis=1)
             #print(X.shape)
@@ -216,6 +215,7 @@ def monophonize(piano_roll, channel=1, delete_repress = False):
     if delete_repress:
         out_roll = np.delete(out_roll, (-2), axis=0)
     return out_roll
+
 
 def monophonize_poly(piano_roll, channel=0, repress_value_encode=1):
     piano_roll = np.vstack([piano_roll,np.zeros((1,piano_roll.shape[1]))])

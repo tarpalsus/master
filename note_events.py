@@ -203,7 +203,7 @@ def note_events_to_midi(encoded, name, fs):
 if __name__ =='__main__':
     fs=200
     #C:\Users\user\Desktop\Sound_generator\inputs\bach_846.mid
-    midi_file = pretty_midi.PrettyMIDI(r"C:\Users\user\Desktop\Sound_generator\piano_midi\chpn_op25_e1.mid")
+    midi_file = pretty_midi.PrettyMIDI(r"C:\Users\user\Desktop\Sound_generator\test\clementi_opus36_1_1.mid")
     #midi_file.time_to_tick()
     
     new_program = pretty_midi.instrument_name_to_program('Acoustic Grand Piano')
