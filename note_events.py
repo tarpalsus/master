@@ -12,9 +12,9 @@ import os
 from Midi_Parser import MidiParser
 import math
 BEAT_PARTS = 6
-MAX_LEN = 10
+MAX_LEN = 50
 OUTPUT_MAX_LEN = 1
-NUM_CHANNELS = 5
+NUM_CHANNELS = 3
 #Jesli midi_file resolution jest 480, to znaczy, że tyle trwa cwiercnuta
 
 #Similar function can be used for tempo / time signature quantization
@@ -63,7 +63,7 @@ def create_events_from_midi(midi_file, fs, instrument_id=0, beat_parts=BEAT_PART
             note_events.append((note.end, note.pitch, "END", note.velocity))
             for i in range(note.start+1,note.end,1):
                 note_events.append((i, note.pitch, "HOLD", note.velocity))
-            
+
             #Write nicer function
             if np.all(note_numpy[note.start, 0:3]==0):
                 note_numpy[note.start, 0] = note.pitch
@@ -83,7 +83,7 @@ def create_events_from_midi(midi_file, fs, instrument_id=0, beat_parts=BEAT_PART
                 for i in range(note.start+1,note.end,1):
                     note_events.append((i, note.pitch, "HOLD", note.velocity))
                     note_numpy[note.start+1 : note.end, (NUM_CHANNELS-3)*3+2] = note.pitch
-            
+
             elif np.all(note_numpy[note.start, 9:12]==0):
                 note_numpy[note.start,(NUM_CHANNELS-2)*3] = note.pitch
                 note_numpy[note.end, (NUM_CHANNELS-2)*3+1] = note.pitch
@@ -95,10 +95,10 @@ def create_events_from_midi(midi_file, fs, instrument_id=0, beat_parts=BEAT_PART
                 note_numpy[note.end, (NUM_CHANNELS-1)*3+1] = note.pitch
                 for i in range(note.start+1,note.end,1):
                     note_events.append((i, note.pitch, "HOLD", note.velocity))
-                    note_numpy[note.start+1 : note.end, (NUM_CHANNELS-1)*3+2] = note.pitch            
+                    note_numpy[note.start+1 : note.end, (NUM_CHANNELS-1)*3+2] = note.pitch
             #note_numpy[note.start,NUM_CHANNELS+4] = note.velocity
-            
-            
+
+
 
     for downbeat in downbeats:
         downbeat = int(round(downbeat*fs))
@@ -205,7 +205,7 @@ if __name__ =='__main__':
     #C:\Users\user\Desktop\Sound_generator\inputs\bach_846.mid
     midi_file = pretty_midi.PrettyMIDI(r"C:\Users\user\Desktop\Sound_generator\test\clementi_opus36_1_1.mid")
     #midi_file.time_to_tick()
-    
+
     new_program = pretty_midi.instrument_name_to_program('Acoustic Grand Piano')
     new_instrument = pretty_midi.Instrument(new_program)
     new_file = pretty_midi.PrettyMIDI()
@@ -213,8 +213,8 @@ if __name__ =='__main__':
     #new_file.instruments.append(new_instrument)
     roll = midi_file.get_piano_roll(fs)
     new_file = pretty_midi.PrettyMIDI()
-   
-    
+
+
     for instrument in ['piano']:#, 'string', 'lead']:
         encoded = None
         encoded2 = None

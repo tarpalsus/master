@@ -9,7 +9,7 @@ Created on Sat Jan 20 18:37:22 2018
 #nizszym poziomie
 
 
-
+from channel_split import split_to_channels, create_dataset_channels, fold
 
 import os
 os.environ["PATH"] += os.pathsep + 'C:/Program Files (x86)/Graphviz2.38/bin/'
@@ -52,7 +52,7 @@ import random
 import itertools
 
 OUT_MAX_LEN = 1
-NUM_CHANNELS = 4
+NUM_CHANNELS = 3
 #INPUT_DIM = NUM_CHANNELS * (PITCHES+2) Poly
 INPUT_DIM =PITCHES_REPRESS
 
@@ -88,7 +88,7 @@ def piano_roll_to_midi(windows, fs,
         if not np.all(step==0):
             note_nums = np.argwhere(step == np.amax(step))[:NUM_CHANNELS]
         else:
-            note_nums = [None] * 4
+            note_nums = [None] * NUM_CHANNELS
         for i, note_num in enumerate(note_nums):
             if repress or note_num != cur_notes[i]:
                 if cur_notes[i] is not None and cur_notes[i] >= 5 and cur_notes[i]<127:
@@ -108,18 +108,19 @@ def piano_roll_to_midi(windows, fs,
 
 def piano_roll_to_midi_mono(windows, fs,
                            instrument_name='Acoustic Grand Piano',
-                           allow_represses=False):
-
-    midi = pretty_midi.PrettyMIDI()
+                           allow_represses=False, midi=None):
+    if midi == None:
+        print('h')
+        midi = pretty_midi.PrettyMIDI()
     instrument_program = pretty_midi.instrument_name_to_program(instrument_name)
     instrument = pretty_midi.Instrument(program=instrument_program)
     cur_note = None # an invalid note to start with
     cur_note_start = None
     clock = 0
-    for step in windows:
+    for i, step in enumerate(windows):
         note_num = np.argmax(step) - 1
-        if note_num != cur_note:
-            if cur_note is not None and cur_note >= 0 and cur_note <127:
+        if note_num != cur_note or i==(len(windows)-1):
+            if (cur_note is not None and cur_note >= 0 and cur_note <127) :
                 note = pretty_midi.Note(velocity=80,
                                         pitch=int(cur_note),
                                         start=cur_note_start,
@@ -129,7 +130,6 @@ def piano_roll_to_midi_mono(windows, fs,
             cur_note_start = clock
         clock = clock + 1.0 / fs
     midi.instruments.append(instrument)
-
     return midi
 
 
@@ -214,7 +214,7 @@ def train_from_generator(path_to_dir, batch_size=512, val_split=0.2, fs=50):
                                                  file_list)
     #piano midi for fs=50 has 3827803 sequences in total /512 -> 7500 steps
     DATA_LEN = 3827803
-    
+
     #midis = midis[:80]
     DATA_LEN = 850 * len(midis)
     random.Random(3).shuffle(midis)
@@ -249,15 +249,15 @@ def sampleGenerator(midis, batch_size, fs=50, shuffle_piece=False, train=True, m
               # Find list of IDs
               #midis_temp = midis[i*batch_size:(i+1)*batch_size]
               # Generate data
-              
+
               X, y = create_dataset(midis[i*midi_batch:(i+1)*midi_batch], fs=fs, poly=False)
               #X_train, X_test, y_train, y_test = train_test_split(X, y,
                #                                                   test_size=0.2,
                 #                                                  random_state=7)
               X, y = randomize_set(X, y, seed=5)
-              if train:      
-                  X = X[:int(0.8*len(X))]            
-                  y = y[:int(0.8*len(y))]     
+              if train:
+                  X = X[:int(0.8*len(X))]
+                  y = y[:int(0.8*len(y))]
                   X, y = randomize_set(X, y)
                   imax = int(X.shape[0]/batch_size) - 1
                   indexes = np.arange(imax)
@@ -276,7 +276,7 @@ def sampleGenerator(midis, batch_size, fs=50, shuffle_piece=False, train=True, m
                   #yield X, np.squeeze(y)
               if shuffle_piece:
                   random.shuffle(indexes)
-              
+
 
 
 def vis(history, save_path):
@@ -304,16 +304,18 @@ def vis(history, save_path):
 
 #for path in list:
 if __name__ == '__main__':
-    
+
     single = False
     fs = 50
     poly = False
-    generator = True
+    generator = False
     start = time.time()
     seq_len = 100
+    repress = True
     if single:
-        midi_file = pretty_midi.PrettyMIDI(r"C:\Users\user\Desktop\Sound_generator\test\clementi_opus36_2_3.mid")
-        #midi_file= pretty_midi.PrettyMIDI(r"C:\Users\Maciek\Downloads\inputs\bach_846.mid")
+
+        #midi_file = pretty_midi.PrettyMIDI(r"C:\Users\user\Desktop\Sound_generator\test\clementi_opus36_2_3.mid")
+        midi_file= pretty_midi.PrettyMIDI(r"C:\Users\Maciek\Downloads\inputs\bach_846.mid")
         midi_obj = MidiParser(midi_file)
         notes2 = midi_obj.get_note_names()
         roll = midi_obj.midi_file.get_piano_roll(fs)
@@ -322,34 +324,35 @@ if __name__ == '__main__':
         roll_repress = find_represses(squeezed)
         roll_ones = (roll_repress>0).astype(float)
 
-        sums = np.sum(roll_ones,axis=0)
         #midi_obj.write(r'C:\Users\user\Desktop\Sound_generator\test_no_dur.mid')
-        repress = False
-        monophonic = monophonize(roll_ones, delete_repress=repress)
 
-        poly = np.zeros(monophonic.shape)
-        for i in range(4):
-            monophonic1= monophonize_poly(roll_ones,i)
-            channel_roll = monophonic1[:-2,:] * squeezed
-            channel_rep1 = (find_represses(channel_roll)>0).astype(float)
-            monophonic1 = monophonize_poly(channel_rep1,0,repress_value_encode=0)
-            poly +=monophonic
-        monophonic2= monophonize_poly(roll_ones,1)
-        monophonic3= monophonize_poly(roll_ones,2)
-        monophonic4= monophonize_poly(roll_ones,3)
-        poly = monophonic1 + monophonic2 + monophonic3+monophonic4
-        monophonic_unsq = expand_roll(monophonic, delete_repress=repress)
-        midi_obj_from_roll = piano_roll_to_midi_mono(monophonic_unsq.T, fs)
+        monophonic_init = monophonize(roll_ones, delete_repress=repress)
+        channels = split_to_channels(squeezed.T,NUM_CHANNELS)
+        poly = np.zeros(monophonic_init.shape)
+        midi_obj_from_roll = None
+        for i, channel in enumerate(channels):
+            roll_repress = find_represses(channel)
+            roll_ones = (roll_repress>0).astype(float)
+            monophonic = monophonize_poly(roll_ones, i+1,0)
+            monophonic_unsq = expand_roll(monophonic, delete_repress=repress)
+            midi_obj_from_roll = piano_roll_to_midi_mono(monophonic_unsq.T,
+                                                         fs,
+                                                         midi=midi_obj_from_roll)
+
+
+
+        #monophonic_unsq = expand_roll(monophonic, delete_repress=repress)
+        #midi_obj_from_roll = piano_roll_to_midi_mono(monophonic_init.T, fs)
         #midi_obj_from_roll, notes = piano_roll_to_midi(roll_ones.T, fs)
         #notes = midi_obj_from_roll.instruments[0].notes
         #notes = midi_obj.get_pitches
         #hist = midi_obj.get_major_key_histogram(notes)
         #output = midi_obj.prepare_output()
         #midi_obj.transform(output)
-        midi_obj_from_roll2, notes2 = piano_roll_to_midi(poly.T, fs)
+        midi_obj_from_roll2, n = piano_roll_to_midi(poly.T, fs)
         #midi_obj_from_roll2.write(r'C:\Users\user\Desktop\Sound_generator\test_dur2.mid')
-        midi_obj_from_roll.write(r'C:\Users\user\Desktop\Sound_generator\test_dur.mid')
-        #midi_obj_from_roll.write(r'C:\Users\Maciek\Downloads\master-master\test_dur.mid')
+        #midi_obj_from_roll.write(r'C:\Users\user\Desktop\Sound_generator\test_dur.mid')
+        midi_obj_from_roll.write(r'C:\Users\Maciek\Downloads\master-master\test_dur5.mid')
 #        notes_class = midi_obj.midi_file.instruments[0].notes
         #X, y = create_sequences(monophonic)
         #X2 = np.repeat(X[:, :, :, np.newaxis, np.newaxis], 4, axis=3)
@@ -384,21 +387,31 @@ if __name__ == '__main__':
         plot_model(model, to_file=model_path+'.png')
         vis(history, model_path)
     else:
-        #path_to_directory = r"C:\Users\Maciek\Downloads\inputs"
-        path_to_directory=r"C:\Users\user\Desktop\Sound_generator\test"
-        file_list = os.listdir(path_to_directory)
+        path_to_directory = r"C:\Users\Maciek\Downloads\inputs"
+        #path_to_directory=r"C:\Users\user\Desktop\Sound_generator\test"
+        file_list = os.listdir(path_to_directory)[:1]
         midis, first, last = parse_directory(path_to_directory,
                                                  file_list)
-        X,y = create_dataset(midis,fs)
+        X1, y1 = create_dataset(midis, fs)
+        X,y = create_dataset_channels(midis,fs)
+        folded = fold(X)
+        midi_obj_from_roll = None
+        for i, channel in enumerate(folded):
+            monophonic_unsq = expand_roll(channel[1,:,:].T, delete_repress=repress)
+            midi_obj_from_roll = piano_roll_to_midi_mono(monophonic_unsq.T,
+                                                         fs,
+                                                         midi=midi_obj_from_roll)
+        midi_obj_from_roll.write(r'C:\Users\Maciek\Downloads\master-master\test_dur5.mid')
 #    print("Dataset generated")
 #    print(start - time.time())
 #    start_learning = time.time()
 #    #
-        keras = True
+        keras = False
         if not keras:
-            model = build_and_run_model(MAX_LEN )
-            model.fit(X, y, validation_set=0.1, batch_size=128, n_epoch=8,
-                              run_id='Midis')
+            pass
+            #model = build_and_run_model(MAX_LEN )
+            #model.fit(X, y, validation_set=0.1, batch_size=128, n_epoch=8,
+             #                 run_id='Midis')
         else:
             SAVE = True
             LOAD = False

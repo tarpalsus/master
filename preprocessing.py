@@ -70,10 +70,10 @@ def create_sequences_fast(monophonic_roll, maxlen=MAX_LEN, output_maxlen=OUT_MAX
     for i in range(0, num_seq):
         roll_part= monophonic_roll[:,i*step:i*step+maxlen].T
         #if not np.all(roll_part[:, 128]) and not np.all(roll_part[:, 129]): #erase silence only samples
-        if np.sum(roll_part[:, -1]) < 20:# and np.sum(roll_part[:, -2]) >= 2 : #silence less than 20 sounds, at least one note start
-            X[j,:,:] = roll_part
-            y[j,:,:] = monophonic_roll[:,i*step+maxlen:i*step + maxlen + output_maxlen].T
-            j+=1
+        #if np.sum(roll_part[:, -1]) < 20:# and np.sum(roll_part[:, -2]) >= 2 : #silence less than 20 sounds, at least one note start
+        X[j,:,:] = roll_part
+        y[j,:,:] = monophonic_roll[:,i*step+maxlen:i*step + maxlen + output_maxlen].T
+        j+=1
     X = np.delete(X, (-2), axis=2)
     y = np.delete(y, (-2), axis=2)
     return X[:j,:,:], y[:j,:,:]
@@ -222,26 +222,28 @@ def monophonize_poly(piano_roll, channel=0, repress_value_encode=1):
     out_roll = np.zeros(piano_roll.shape)
     prev_index = None
     for i, window in enumerate(piano_roll.T):
-        if np.sum(window) ==0:
+        if np.sum(window) == 0:
             window[window.shape[0]-1] = 1
-        elif np.sum(window)>1:
+        elif np.sum(window) > 1:
             indices = np.argwhere(window == np.amax(window))
             end = indices.shape[0]
             repress = window[-2]
             window = np.zeros(window.shape)
             try:
                 if repress:
-                    index = indices[channel]
+                    index = indices[channel-1]
                     window[index] = repress_value_encode
-                    prev_index =index
-                else :
+                    prev_index = index
+                else:
                     index = indices[channel]
                     if prev_index == index:
                         window[index] = 1
                         prev_index = index
             except:
                 pass
-        out_roll[:,i] = window
+            if np.sum(window) == 0:
+                window[window.shape[0]-1] = 1
+        out_roll[:, i] = window
     return out_roll
 
 def polyphonize(piano_roll, num_channels=NUM_CHANNELS):
